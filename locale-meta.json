@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "officialLocales": ["de", "es", "pt-BR", "zh-CN", "zh-TW"],
+  "locales": {
+    "ko-KR": {
+      "name": "한국어",
+      "aliases": ["ko", "kr", "kor", "korean", "한국어"],
+      "versions": {}
+    }
+  }
+}
