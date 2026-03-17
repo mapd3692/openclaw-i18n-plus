@@ -1,0 +1,77 @@
+name: 새 언어 추가 요청
+description: 새로운 언어의 커뮤니티 번역을 추가합니다
+title: "[New Locale] "
+labels: ["new-locale", "community"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        새로운 언어를 추가해 주셔서 감사합니다! 아래 정보를 채워주세요.
+
+  - type: input
+    id: locale-code
+    attributes:
+      label: 언어 코드
+      description: "IETF 언어 태그 (예: ja-JP, vi-VN, fr-FR)"
+      placeholder: "ja-JP"
+    validations:
+      required: true
+
+  - type: input
+    id: locale-name
+    attributes:
+      label: 언어 이름 (원어)
+      description: "해당 언어의 원어 표기 (예: 日本語, Tiếng Việt, Français)"
+      placeholder: "日本語"
+    validations:
+      required: true
+
+  - type: input
+    id: aliases
+    attributes:
+      label: 별칭 (aliases)
+      description: "/lang 명령어에서 사용할 수 있는 별칭들 (쉼표 구분)"
+      placeholder: "ja, jp, japanese, 日本語"
+    validations:
+      required: true
+
+  - type: input
+    id: openclaw-version
+    attributes:
+      label: 대상 OpenClaw 버전
+      description: "번역 대상 OpenClaw 버전"
+      placeholder: "2026.3.13"
+    validations:
+      required: true
+
+  - type: textarea
+    id: coverage
+    attributes:
+      label: 예상 번역률
+      description: "전체 키 대비 번역한 키의 비율과 미번역 영역을 알려주세요"
+      placeholder: |
+        번역률: 약 90%
+        미번역: settings 섹션 일부
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 참고사항
+      description: "번역 시 참고한 자료나 특이사항이 있으면 알려주세요"
+      placeholder: "OpenClaw PR #44902의 번역을 기반으로 작업했습니다."
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 체크리스트
+      options:
+        - label: chunk 파일이 올바른 JS export 형식입니다
+          required: true
+        - label: locale-meta.json에 언어 정보를 추가했습니다
+          required: true
+        - label: aliases가 기존 언어와 중복되지 않습니다
+          required: true
+        - label: CONTRIBUTING.md의 가이드를 읽었습니다
+          required: true
