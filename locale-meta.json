@@ -5,7 +5,13 @@
     "ko-KR": {
       "name": "한국어",
       "aliases": ["ko", "kr", "kor", "korean", "한국어"],
-      "versions": {}
+      "versions": {
+        "2026.3.13": {
+          "file": "locales/2026.3.13/ko-KR-community.js",
+          "exportName": "ko_KR",
+          "coverage": "98%"
+        }
+      }
     }
   }
 }
