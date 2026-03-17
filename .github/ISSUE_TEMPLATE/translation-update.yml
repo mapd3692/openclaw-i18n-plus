@@ -1,0 +1,68 @@
+name: 번역 개선 요청
+description: 기존 번역의 오류 수정이나 품질 개선을 요청합니다
+title: "[Translation] "
+labels: ["translation-update"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        번역 개선에 기여해 주셔서 감사합니다!
+
+  - type: input
+    id: locale-code
+    attributes:
+      label: 언어 코드
+      description: "수정 대상 언어 코드 (예: ko-KR)"
+      placeholder: "ko-KR"
+    validations:
+      required: true
+
+  - type: input
+    id: openclaw-version
+    attributes:
+      label: OpenClaw 버전
+      description: "해당 번역의 OpenClaw 버전"
+      placeholder: "2026.3.13"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: 요청 유형
+      options:
+        - 오역 수정
+        - 누락 번역 추가
+        - 용어 통일
+        - 문체 개선
+        - 새 버전 키 추가
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: 상세 내용
+      description: "수정이 필요한 부분과 제안하는 번역을 알려주세요"
+      placeholder: |
+        키: common.health
+        현재 번역: 건강 상태
+        제안 번역: 시스템 상태
+
+        이유: OpenClaw 맥락에서 "health"는 시스템 상태를 의미합니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 참고 맥락
+      description: "해당 번역이 사용되는 UI 화면이나 맥락을 알려주세요 (스크린샷 첨부 가능)"
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 체크리스트
+      options:
+        - label: OpenClaw UI에서 해당 번역의 맥락을 확인했습니다
+          required: true
