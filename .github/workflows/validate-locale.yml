@@ -1,0 +1,133 @@
+name: 로케일 검증
+
+on:
+  pull_request:
+    paths:
+      - "locales/**"
+      - "locale-meta.json"
+
+jobs:
+  validate:
+    name: 로케일 파일 검증
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node.js 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: locale-meta.json 스키마 검증
+        run: |
+          node -e "
+          const fs = require('fs');
+          const meta = JSON.parse(fs.readFileSync('locale-meta.json', 'utf-8'));
+
+          const errors = [];
+
+          // 필수 최상위 필드
+          if (typeof meta.schemaVersion !== 'number') {
+            errors.push('schemaVersion 필드가 없거나 숫자가 아닙니다.');
+          }
+          if (!Array.isArray(meta.officialLocales)) {
+            errors.push('officialLocales 필드가 없거나 배열이 아닙니다.');
+          }
+          if (typeof meta.locales !== 'object' || meta.locales === null) {
+            errors.push('locales 필드가 없거나 객체가 아닙니다.');
+          }
+
+          // 각 locale 엔트리 검증
+          const allAliases = [];
+          for (const [code, entry] of Object.entries(meta.locales || {})) {
+            if (!entry.name) {
+              errors.push(code + ': name 필드가 없습니다.');
+            }
+            if (!Array.isArray(entry.aliases)) {
+              errors.push(code + ': aliases 필드가 없거나 배열이 아닙니다.');
+            } else {
+              allAliases.push(...entry.aliases.map(a => ({ alias: a, locale: code })));
+            }
+            if (typeof entry.versions !== 'object') {
+              errors.push(code + ': versions 필드가 없거나 객체가 아닙니다.');
+            } else {
+              for (const [ver, vInfo] of Object.entries(entry.versions)) {
+                if (!vInfo.file) errors.push(code + '/' + ver + ': file 필드가 없습니다.');
+                if (!vInfo.exportName) errors.push(code + '/' + ver + ': exportName 필드가 없습니다.');
+              }
+            }
+          }
+
+          // aliases 중복 검사
+          const seen = {};
+          for (const { alias, locale } of allAliases) {
+            const lower = alias.toLowerCase();
+            if (seen[lower] && seen[lower] !== locale) {
+              errors.push('alias 중복: \"' + alias + '\"이(가) ' + seen[lower] + '과(와) ' + locale + '에서 모두 사용됩니다.');
+            }
+            seen[lower] = locale;
+          }
+
+          if (errors.length > 0) {
+            console.error('❌ locale-meta.json 검증 실패:\\n');
+            errors.forEach(e => console.error('  - ' + e));
+            process.exit(1);
+          }
+
+          console.log('✅ locale-meta.json 검증 통과');
+          "
+
+      - name: chunk 파일 문법 검증
+        run: |
+          node -e "
+          const fs = require('fs');
+          const path = require('path');
+          const meta = JSON.parse(fs.readFileSync('locale-meta.json', 'utf-8'));
+          const errors = [];
+
+          for (const [code, entry] of Object.entries(meta.locales)) {
+            for (const [ver, vInfo] of Object.entries(entry.versions)) {
+              const filePath = vInfo.file;
+              if (!fs.existsSync(filePath)) {
+                errors.push(filePath + ': 파일이 존재하지 않습니다.');
+                continue;
+              }
+
+              const content = fs.readFileSync(filePath, 'utf-8');
+
+              // JS export 형식 확인
+              if (!content.match(/var\s+\w+\s*=\s*\{/)) {
+                errors.push(filePath + ': var 선언이 없습니다.');
+              }
+              if (!content.match(/export\s*\{/)) {
+                errors.push(filePath + ': export 구문이 없습니다.');
+              }
+
+              // exportName 확인
+              const expectedExport = vInfo.exportName;
+              if (!content.includes(expectedExport)) {
+                errors.push(filePath + ': export 이름 \"' + expectedExport + '\"을(를) 찾을 수 없습니다.');
+              }
+
+              // 기본적인 JS 문법 체크 (괄호 매칭)
+              let braceCount = 0;
+              for (const ch of content) {
+                if (ch === '{') braceCount++;
+                else if (ch === '}') braceCount--;
+              }
+              if (braceCount !== 0) {
+                errors.push(filePath + ': 중괄호가 매칭되지 않습니다 (차이: ' + braceCount + ')');
+              }
+            }
+          }
+
+          if (errors.length > 0) {
+            console.error('❌ chunk 파일 검증 실패:\\n');
+            errors.forEach(e => console.error('  - ' + e));
+            process.exit(1);
+          }
+
+          console.log('✅ 모든 chunk 파일 검증 통과');
+          "
