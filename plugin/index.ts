@@ -3,14 +3,18 @@
  *
  * /lang          — 사용 가능한 언어 목록 출력
  * /lang <code>   — 커뮤니티 언어팩 설치
- *
- * TODO: Phase 2에서 구현 예정
  */
+
+import { execSync } from "child_process";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { join } from "path";
+import https from "https";
 
 // --- 상수 ---
 const GITHUB_RAW_BASE =
   "https://raw.githubusercontent.com/mapd3692/openclaw-i18n-plus/main";
 const LOCALE_META_URL = `${GITHUB_RAW_BASE}/locale-meta.json`;
+const CONTROL_UI_ASSETS = "/app/dist/control-ui/assets";
 
 // --- 타입 ---
 interface LocaleVersion {
@@ -31,8 +35,303 @@ interface LocaleMeta {
   locales: Record<string, LocaleEntry>;
 }
 
+// --- 유틸리티: HTTPS GET ---
+function httpsGet(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const request = (targetUrl: string) => {
+      https
+        .get(targetUrl, (res) => {
+          // 리다이렉트 처리
+          if (
+            res.statusCode &&
+            res.statusCode >= 300 &&
+            res.statusCode < 400 &&
+            res.headers.location
+          ) {
+            request(res.headers.location);
+            return;
+          }
+          if (res.statusCode !== 200) {
+            reject(new Error(`HTTP ${res.statusCode} for ${targetUrl}`));
+            return;
+          }
+          let data = "";
+          res.on("data", (chunk: string) => (data += chunk));
+          res.on("end", () => resolve(data));
+          res.on("error", reject);
+        })
+        .on("error", reject);
+    };
+    request(url);
+  });
+}
+
+// --- locale-meta.json 다운로드 ---
+async function fetchLocaleMeta(): Promise<LocaleMeta> {
+  const raw = await httpsGet(LOCALE_META_URL);
+  return JSON.parse(raw) as LocaleMeta;
+}
+
+// --- alias → 정식 locale 코드 정규화 ---
+function resolveAlias(
+  meta: LocaleMeta,
+  input: string
+): { code: string; entry: LocaleEntry } | null {
+  const lower = input.toLowerCase();
+
+  // 1. 정확한 locale 코드 매칭 (대소문자 무시)
+  for (const [code, entry] of Object.entries(meta.locales)) {
+    if (code.toLowerCase() === lower) {
+      return { code, entry };
+    }
+  }
+
+  // 2. alias 매칭
+  for (const [code, entry] of Object.entries(meta.locales)) {
+    if (entry.aliases.some((a) => a.toLowerCase() === lower)) {
+      return { code, entry };
+    }
+  }
+
+  return null;
+}
+
+// --- OpenClaw 버전 확인 ---
+function getOpenClawVersion(): string {
+  try {
+    const output = execSync("openclaw --version", { encoding: "utf-8" }).trim();
+    // "openclaw 2026.3.13" → "2026.3.13"
+    const match = output.match(/(\d+\.\d+\.\d+)/);
+    return match ? match[1] : output;
+  } catch {
+    // fallback: package.json 등에서 추정
+    try {
+      const pkg = JSON.parse(
+        readFileSync("/app/package.json", "utf-8")
+      );
+      return pkg.version || "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+}
+
+// --- 시맨틱 버전 비교 (a <= b) ---
+function versionLte(a: string, b: string): boolean {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const va = pa[i] || 0;
+    const vb = pb[i] || 0;
+    if (va < vb) return true;
+    if (va > vb) return false;
+  }
+  return true; // equal
+}
+
+// --- 가장 적합한 chunk 버전 선택 ---
+function selectBestVersion(
+  versions: Record<string, LocaleVersion>,
+  currentVersion: string
+): { version: string; versionInfo: LocaleVersion; exact: boolean } | null {
+  const versionKeys = Object.keys(versions).sort((a, b) =>
+    versionLte(a, b) ? 1 : -1
+  ); // 내림차순 정렬
+
+  // 1. 정확 매칭
+  if (versions[currentVersion]) {
+    return {
+      version: currentVersion,
+      versionInfo: versions[currentVersion],
+      exact: true,
+    };
+  }
+
+  // 2. 가장 가까운 이전 버전 (현재 버전 이하 중 최신)
+  for (const v of versionKeys) {
+    if (versionLte(v, currentVersion)) {
+      return { version: v, versionInfo: versions[v], exact: false };
+    }
+  }
+
+  // 3. 대응 버전 없음 → 가장 최신 버전이라도 사용
+  if (versionKeys.length > 0) {
+    const latest = versionKeys[0];
+    return { version: latest, versionInfo: versions[latest], exact: false };
+  }
+
+  return null;
+}
+
+// --- 메인 번들에 이미 패치되었는지 확인 ---
+function isAlreadyPatched(indexJsPath: string, localeCode: string): boolean {
+  const content = readFileSync(indexJsPath, "utf-8");
+  return content.includes(`"${localeCode}":{exportName:`);
+}
+
+// --- 메인 번들 패치: locale 매핑 테이블에 엔트리 삽입 ---
+function patchMainBundle(
+  indexJsPath: string,
+  localeCode: string,
+  exportName: string,
+  chunkFileName: string
+): void {
+  const content = readFileSync(indexJsPath, "utf-8");
+
+  // "zh-CN" 앵커를 기준으로 삽입
+  const anchor = `"zh-CN":`;
+  const newEntry =
+    `"${localeCode}":{exportName:\`${exportName}\`,` +
+    `loader:()=>E(()=>import(\`./${chunkFileName}\`),[],import.meta.url)},`;
+
+  const patched = content.replace(anchor, newEntry + anchor);
+  writeFileSync(indexJsPath, patched, "utf-8");
+}
+
+// --- 메인 번들 파일 탐색 ---
+function findMainBundle(): string | null {
+  try {
+    const result = execSync(
+      `find ${CONTROL_UI_ASSETS} -name "index-*.js" -not -name "*.map" | head -1`,
+      { encoding: "utf-8" }
+    ).trim();
+    return result || null;
+  } catch {
+    return null;
+  }
+}
+
+// --- /lang (인자 없음): 사용 가능한 언어 목록 출력 ---
+async function listLanguages(meta: LocaleMeta): Promise<string> {
+  const officialList = meta.officialLocales.join(", ");
+
+  const communityEntries = Object.entries(meta.locales)
+    .map(([code, entry]) => {
+      const shortAlias = entry.aliases[0] || code;
+      return `  ${shortAlias} (${entry.name})`;
+    })
+    .join("\n");
+
+  return [
+    `📦 OpenClaw Community Language Pack (i18n-plus)`,
+    ``,
+    `공식 언어팩 (built-in):`,
+    `  ${officialList}`,
+    ``,
+    `커뮤니티 언어팩 (설치 가능):`,
+    communityEntries,
+    ``,
+    `사용법: /lang <언어코드>`,
+    `예시: /lang ko`,
+  ].join("\n");
+}
+
+// --- /lang <code>: 커뮤니티 언어팩 설치 ---
+async function installLanguage(
+  meta: LocaleMeta,
+  input: string
+): Promise<string> {
+  // 1. 공식 locale인지 확인
+  const inputLower = input.toLowerCase();
+  if (
+    meta.officialLocales.some((loc) => loc.toLowerCase() === inputLower)
+  ) {
+    return [
+      `ℹ️ ${input}은(는) 공식 언어팩입니다.`,
+      `   Control UI 설정(Language)에서 직접 변경할 수 있습니다.`,
+    ].join("\n");
+  }
+
+  // 2. alias 정규화
+  const resolved = resolveAlias(meta, input);
+  if (!resolved) {
+    return [
+      `❌ "${input}"에 해당하는 언어팩을 찾을 수 없습니다.`,
+      `   /lang 명령으로 사용 가능한 언어 목록을 확인하세요.`,
+    ].join("\n");
+  }
+
+  const { code, entry } = resolved;
+
+  // 3. OpenClaw 버전 확인
+  const currentVersion = getOpenClawVersion();
+  if (currentVersion === "unknown") {
+    return `❌ OpenClaw 버전을 확인할 수 없습니다. OpenClaw 환경에서 실행해주세요.`;
+  }
+
+  // 4. 가장 적합한 버전의 chunk 선택
+  const best = selectBestVersion(entry.versions, currentVersion);
+  if (!best) {
+    return [
+      `❌ ${entry.name} (${code}) 언어팩에 사용 가능한 버전이 없습니다.`,
+      `   기여를 원하시면: https://github.com/mapd3692/openclaw-i18n-plus`,
+    ].join("\n");
+  }
+
+  const { version, versionInfo, exact } = best;
+
+  // 5. chunk 파일 다운로드
+  const chunkUrl = `${GITHUB_RAW_BASE}/${versionInfo.file}`;
+  let chunkContent: string;
+  try {
+    chunkContent = await httpsGet(chunkUrl);
+  } catch (err) {
+    return `❌ 언어팩 파일을 다운로드할 수 없습니다: ${chunkUrl}`;
+  }
+
+  // 6. assets 디렉토리에 저장
+  const chunkFileName = `${code}-community.js`;
+  const chunkDest = join(CONTROL_UI_ASSETS, chunkFileName);
+
+  if (!existsSync(CONTROL_UI_ASSETS)) {
+    return `❌ Control UI assets 디렉토리를 찾을 수 없습니다: ${CONTROL_UI_ASSETS}`;
+  }
+
+  writeFileSync(chunkDest, chunkContent, "utf-8");
+
+  // 7. 메인 번들 패치
+  const indexJs = findMainBundle();
+  if (!indexJs) {
+    return [
+      `❌ 메인 번들 파일(index-*.js)을 찾을 수 없습니다.`,
+      `   파일은 다운로드되었지만 자동 패치에 실패했습니다.`,
+    ].join("\n");
+  }
+
+  // 중복 설치 방지
+  if (isAlreadyPatched(indexJs, code)) {
+    // chunk 파일은 이미 업데이트했으므로 패치는 생략
+    return exact
+      ? [
+          `✅ ${entry.name}가 업데이트되었습니다. (openclaw ${version} 대응, 번역률 ${versionInfo.coverage})`,
+          `   브라우저를 새로고침한 뒤 설정에서 ${entry.name}를 선택하세요.`,
+        ].join("\n")
+      : [
+          `✅ ${entry.name}가 업데이트되었습니다. (openclaw ${version} 기준)`,
+          `   ⚠️ 일부 새 항목은 영어로 표시될 수 있습니다.`,
+          `   브라우저를 새로고침한 뒤 설정에서 ${entry.name}를 선택하세요.`,
+        ].join("\n");
+  }
+
+  // 패치 실행
+  patchMainBundle(indexJs, code, versionInfo.exportName, chunkFileName);
+
+  // 8. 결과 메시지
+  if (exact) {
+    return [
+      `✅ ${entry.name}가 설치되었습니다. (openclaw ${version} 대응, 번역률 ${versionInfo.coverage})`,
+      `   브라우저를 새로고침한 뒤 설정에서 ${entry.name}를 선택하세요.`,
+    ].join("\n");
+  } else {
+    return [
+      `✅ ${entry.name}가 설치되었습니다. (openclaw ${version} 기준)`,
+      `   ⚠️ 일부 새 항목은 영어로 표시될 수 있습니다.`,
+      `   브라우저를 새로고침한 뒤 설정에서 ${entry.name}를 선택하세요.`,
+    ].join("\n");
+  }
+}
+
 // --- 플러그인 엔트리포인트 ---
-// TODO: OpenClaw 플러그인 API에 맞춰 구현
 export default {
   name: "i18n-plus",
 
@@ -40,10 +339,25 @@ export default {
     lang: {
       description: "커뮤니티 언어팩 설치 및 관리",
       handler: async (args: string[]) => {
-        // TODO: Phase 2에서 구현
-        // 1. locale-meta.json 다운로드
-        // 2. 인자 없으면 목록 출력
-        // 3. 인자 있으면 alias 정규화 → 설치
+        try {
+          // 1. locale-meta.json 다운로드
+          const meta = await fetchLocaleMeta();
+
+          // 2. 인자 없으면 목록 출력
+          if (!args || args.length === 0 || args[0] === "") {
+            const list = await listLanguages(meta);
+            console.log(list);
+            return;
+          }
+
+          // 3. 인자 있으면 설치
+          const result = await installLanguage(meta, args[0]);
+          console.log(result);
+        } catch (err) {
+          console.error(
+            `❌ 오류가 발생했습니다: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
       },
     },
   },
