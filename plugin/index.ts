@@ -441,39 +441,41 @@ async function installLanguage(
 }
 
 // --- 플러그인 엔트리포인트 ---
-export default {
-  name: "i18n-plus",
-
-  // 플러그인 로드 시 자동 업데이트 체크
-  onLoad: () => {
-    // 백그라운드로 실행 — 실패해도 플러그인 로드를 막지 않음
-    autoUpdate().catch(() => {});
-  },
-
-  commands: {
-    lang: {
-      description: "커뮤니티 언어팩 설치 및 관리",
-      handler: async (args: string[]) => {
-        try {
-          // 1. locale-meta.json 다운로드
-          const meta = await fetchLocaleMeta();
-
-          // 2. 인자 없으면 목록 출력
-          if (!args || args.length === 0 || args[0] === "") {
-            const list = await listLanguages(meta);
-            console.log(list);
-            return;
-          }
-
-          // 3. 인자 있으면 설치
-          const result = await installLanguage(meta, args[0]);
-          console.log(result);
-        } catch (err) {
-          console.error(
-            `❌ 오류가 발생했습니다: ${err instanceof Error ? err.message : String(err)}`
-          );
-        }
-      },
+// OpenClaw 플러그인 API: register(api) 함수를 통해 명령어/서비스 등록
+export function register(api: {
+  registerCommand: (name: string, opts: { description: string; handler: (args: string[]) => Promise<void> | void }) => void;
+  registerService: (name: string, opts: { onStart: () => void }) => void;
+}): void {
+  // 자동 업데이트 서비스 등록 — 플러그인 시작 시 백그라운드로 실행
+  api.registerService("auto-update", {
+    onStart: () => {
+      autoUpdate().catch(() => {});
     },
-  },
-};
+  });
+
+  // /lang 명령어 등록
+  api.registerCommand("lang", {
+    description: "커뮤니티 언어팩 설치 및 관리",
+    handler: async (args: string[]) => {
+      try {
+        // 1. locale-meta.json 다운로드
+        const meta = await fetchLocaleMeta();
+
+        // 2. 인자 없으면 목록 출력
+        if (!args || args.length === 0 || args[0] === "") {
+          const list = await listLanguages(meta);
+          console.log(list);
+          return;
+        }
+
+        // 3. 인자 있으면 설치
+        const result = await installLanguage(meta, args[0]);
+        console.log(result);
+      } catch (err) {
+        console.error(
+          `❌ 오류가 발생했습니다: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    },
+  });
+}
