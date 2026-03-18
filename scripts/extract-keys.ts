@@ -61,6 +61,8 @@ function extractNestedKeys(objStr: string, prefix: string, keys: string[]): void
       }
       const nestedObj = objStr.slice(start, i - 1);
       extractNestedKeys(nestedObj, fullKey, keys);
+      // check-coverage.ts와 동일: 중첩 범위를 건너뛰어 이중 카운팅 방지
+      keyValueRegex.lastIndex = i;
     } else {
       keys.push(fullKey);
     }
