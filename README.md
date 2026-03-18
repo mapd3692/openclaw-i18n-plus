@@ -1,67 +1,38 @@
 # OpenClaw i18n Plus
 
-OpenClaw 커뮤니티 언어팩 프로젝트입니다.
+커뮤니티 주도 OpenClaw 언어팩 — 명령어 한 줄로 설치합니다.
 
-OpenClaw의 공식 i18n 지원이 보류된 상황([#3460](https://github.com/openclaw/openclaw/issues/3460))에서, 커뮤니티 주도로 비공식 언어팩을 제공합니다. OpenClaw 플러그인으로 배포되어 `/lang ko` 한 줄로 언어팩을 설치할 수 있습니다.
+Community-driven language packs for OpenClaw, installable in a single command.
 
-## 지원 언어
+> OpenClaw 공식 i18n 지원이 보류된 동안([#3460](https://github.com/openclaw/openclaw/issues/3460)), 이 플러그인이 커뮤니티 언어팩을 코어 수정 없이 제공합니다.
+>
+> While OpenClaw's official i18n support is pending ([#3460](https://github.com/openclaw/openclaw/issues/3460)), this plugin bridges the gap by delivering community-maintained locale chunks without touching OpenClaw's core.
 
-### 공식 언어팩 (OpenClaw 내장)
+---
 
-de, es, pt-BR, zh-CN, zh-TW
+## 지원 언어 / Supported Languages
 
-### 커뮤니티 언어팩
+### 공식 언어팩 (OpenClaw 내장) / Official (built-in)
 
-| 언어 | 코드 | 상태 |
-|------|------|------|
-| 한국어 | ko-KR | 준비 중 |
+`de` `es` `pt-BR` `zh-CN` `zh-TW`
 
-## 설치
+### 커뮤니티 언어팩 / Community Packs
 
-### 플러그인 설치 (한 번만)
+| 언어 Language | 코드 Code | 상태 Status |
+|--------------|-----------|-------------|
+| 한국어 Korean | `ko` / `ko-KR` | ✅ 사용 가능 Available |
+
+---
+
+## 설치 / Installation
+
+### 1. 플러그인 설치 (최초 1회) / Install the plugin (once)
 
 ```bash
 openclaw plugins install @openclaw-community/i18n-plus
 ```
 
-### 언어팩 설치
-
-```bash
-/lang ko
-```
-
-OpenClaw 업데이트 후에는 `/lang ko`를 다시 실행하면 됩니다.
-
-## 사용법
-
-### 사용 가능한 언어 목록 확인
-
-```
-/lang
-```
-
-### 커뮤니티 언어팩 설치
-
-```
-/lang <언어코드>
-```
-
-예시: `/lang ko`, `/lang korean`, `/lang 한국어`
-
-### 공식 언어팩 안내
-
-공식 언어팩(de, es, pt-BR, zh-CN, zh-TW)을 입력하면, Control UI 설정에서 직접 변경하도록 안내합니다.
-
-## 동작 원리
-
-이 플러그인은 OpenClaw의 Control UI 빌드 결과물에 locale chunk 파일을 추가하고, 메인 번들의 locale 매핑 테이블을 패치하는 방식으로 동작합니다. 핵심 로직은 수정하지 않으며, UI 리소스 파일만 패치합니다.
-
-1. `locale-meta.json`에서 언어 정보를 확인
-2. 해당 버전의 locale chunk 파일을 다운로드
-3. Control UI assets 디렉토리에 chunk 파일 복사
-4. 메인 번들(`index-*.js`)의 locale 매핑 테이블에 엔트리 삽입
-
-## 개발자 설치
+소스에서 설치 / Install from source:
 
 ```bash
 git clone https://github.com/mapd3692/openclaw-i18n-plus.git
@@ -69,10 +40,60 @@ cd openclaw-i18n-plus
 openclaw plugins install -l ./plugin
 ```
 
-## 기여하기
+### 2. 언어팩 설치 / Install a language pack
 
-새로운 언어를 추가하거나 기존 번역을 개선하고 싶다면 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고해주세요.
+```
+/lang ko
+```
 
-## 라이선스
+OpenClaw 업데이트 후에는 플러그인이 자동으로 감지해 재패치합니다.
+
+After an OpenClaw update, the plugin automatically detects the version change and re-patches.
+
+---
+
+## 사용법 / Usage
+
+| 명령어 Command | 설명 Description |
+|---------------|-----------------|
+| `/lang` | 사용 가능한 언어 목록 보기 / List available community packs |
+| `/lang <코드 code>` | 언어팩 설치 / Install a community language pack |
+
+**예시 / Examples:**
+
+```
+/lang
+/lang ko
+/lang korean
+```
+
+공식 언어코드(예: `de`, `es`)를 입력하면, Control UI 설정에서 직접 변경하도록 안내합니다.
+
+If you enter an official locale code (e.g. `de`, `es`), the plugin will guide you to the built-in language setting in Control UI instead.
+
+---
+
+## 동작 원리 / How It Works
+
+OpenClaw Control UI 빌드 결과물만 패치합니다. 코어는 수정하지 않습니다:
+
+This plugin patches OpenClaw's Control UI build artifacts directly — no core modifications:
+
+1. `locale-meta.json`에서 언어 정보 확인 / Fetches language metadata from `locale-meta.json`
+2. 현재 버전에 맞는 locale chunk 다운로드 / Downloads the matching locale chunk for your OpenClaw version
+3. chunk 파일을 `/app/dist/control-ui/assets/`에 저장 / Copies the chunk to assets directory
+4. 메인 번들의 locale 매핑 테이블에 엔트리 삽입 / Injects a locale entry into the main bundle
+
+---
+
+## 기여하기 / Contributing
+
+새로운 언어를 추가하거나 번역을 개선하고 싶다면 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고해주세요.
+
+Want to add a new language or improve an existing translation? See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## 라이선스 / License
 
 [MIT](LICENSE)
