@@ -12,6 +12,11 @@ on:
       - "locales/**"
       - "locale-meta.json"
 
+permissions:
+  pull-requests: write  # fork PR에서 PR 코멘트 작성에 필요
+  issues: write         # issues.createComment / issues.updateComment 호출에 필요
+  contents: read
+
 jobs:
   check-coverage:
     name: 번역률 계산
