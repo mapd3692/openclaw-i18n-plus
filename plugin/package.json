@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "description": "OpenClaw 커뮤니티 언어팩 플러그인",
   "main": "index.ts",
+  "openclaw": {
+    "extensions": [
+      "index.ts"
+    ]
+  },
   "keywords": [
     "openclaw",
     "openclaw-plugin",
