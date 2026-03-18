@@ -1,8 +1,10 @@
 {
+  "id": "openclaw-community/i18n-plus",
   "name": "i18n-plus",
   "displayName": "i18n Plus — Community Language Pack",
   "version": "0.1.0",
   "description": "커뮤니티 주도 OpenClaw 언어팩. /lang <언어코드>로 설치하세요.",
+  "configSchema": {},
   "commands": [
     {
       "name": "lang",

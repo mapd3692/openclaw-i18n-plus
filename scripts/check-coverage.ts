@@ -119,21 +119,14 @@ function getReferenceKeys(version: string, meta: LocaleMeta): string[] {
       .filter((line) => line.trim().length > 0);
   }
 
-  // 2. 없으면 해당 버전의 첫 번째 커뮤니티 chunk에서 키 추출 (참조용)
-  for (const [localeCode, entry] of Object.entries(meta.locales)) {
-    const versionInfo = entry.versions[version];
-    if (versionInfo) {
-      const chunkPath = path.join(rootDir, versionInfo.file);
-      if (fs.existsSync(chunkPath)) {
-        console.log(
-          `  참고: 영어 원본 키 파일 없음 — ${localeCode} chunk를 기준으로 사용합니다.`
-        );
-        return extractKeysFromChunk(chunkPath);
-      }
-    }
-  }
-
-  return [];
+  // 2. en-keys 파일이 없으면 에러로 처리 — 커뮤니티 chunk를 baseline으로 사용하면
+  //    첫 번째 locale이 항상 100%가 되어 locale-meta.json의 coverage 값이 오염됩니다.
+  console.error(
+    `오류: scripts/en-keys/${version}.txt 파일이 없습니다.\n` +
+    `  영어 원본 키 파일을 먼저 생성해야 번역률을 정확히 계산할 수 있습니다.\n` +
+    `  생성 방법: npx ts-node scripts/extract-keys.ts --version ${version}`
+  );
+  process.exit(1);
 }
 
 // --- 메인 ---
