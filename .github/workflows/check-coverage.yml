@@ -31,12 +31,12 @@ jobs:
         with:
           node-version: "20"
 
-      - name: ts-node 설치
-        run: npm install -g ts-node typescript @types/node
+      - name: 의존성 설치
+        run: npm ci
 
       - name: 번역률 계산
         id: coverage
-        run: npx ts-node scripts/check-coverage.ts
+        run: npm run check-coverage
 
       - name: PR 코멘트 작성
         if: github.event_name == 'pull_request'
@@ -49,7 +49,7 @@ jobs:
             const { execSync } = require('child_process');
             let output;
             try {
-              output = execSync('npx ts-node scripts/check-coverage.ts', { encoding: 'utf-8' });
+              output = execSync('npm run check-coverage --silent', { encoding: 'utf-8' });
             } catch (e) {
               output = e.stdout || '번역률 계산 중 오류가 발생했습니다.';
             }
