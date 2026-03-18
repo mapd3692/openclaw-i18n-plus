@@ -469,45 +469,58 @@ async function installLanguage(
 
 // --- 플러그인 엔트리포인트 ---
 // OpenClaw 플러그인 API: register(api) 함수를 통해 명령어/서비스 등록
+//
+// 타입 출처: openclaw@2026.3.13 dist/plugin-sdk/plugins/types.d.ts
+//   - registerCommand: (command: OpenClawPluginCommandDefinition) => void
+//   - registerService: (service: OpenClawPluginService) => void
 export function register(api: {
   registerCommand: (descriptor: {
     name: string;
     description: string;
-    handler: (args: string[]) => Promise<{ text: string }> | { text: string };
+    acceptsArgs?: boolean;
+    handler: (ctx: {
+      args?: string;          // 공백 구분 인자 전체 문자열 (예: "ko-KR")
+      commandBody: string;    // 명령어 본문 전체 (예: "/lang ko-KR")
+      channel: string;        // 채널 식별자 (예: "telegram")
+      isAuthorizedSender: boolean;
+      senderId?: string;
+    }) => Promise<{ text?: string }> | { text?: string };
   }) => void;
   registerService: (descriptor: {
     id: string;
-    start: () => void;
-    stop?: () => void;
+    start: (ctx: { stateDir: string; logger: { info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void }; [key: string]: unknown }) => void | Promise<void>;
+    stop?: (ctx: unknown) => void | Promise<void>;
   }) => void;
 }): void {
   // 자동 업데이트 서비스 등록 — 플러그인 시작 시 백그라운드로 실행
   api.registerService({
     id: "auto-update",
-    start: () => {
+    start: (_ctx) => {
       autoUpdate().catch(() => {});
     },
-    stop: () => { /* 정리 불필요 */ },
+    stop: (_ctx) => { /* 정리 불필요 */ },
   });
 
   // /lang 명령어 등록
   api.registerCommand({
     name: "lang",
     description: "커뮤니티 언어팩 설치 및 관리",
-    handler: async (args: string[]) => {
+    acceptsArgs: true,
+    handler: async (ctx) => {
+      // ctx.args: "/lang ko-KR" 입력 시 "ko-KR" (명령어 이름 제거된 나머지)
+      const input = ctx.args?.trim() ?? "";
       try {
         // 1. locale-meta.json 다운로드
         const meta = await fetchLocaleMeta();
 
         // 2. 인자 없으면 목록 출력
-        if (!args || args.length === 0 || args[0] === "") {
-          const list = await listLanguages(meta);
-          return { text: list };
+        if (!input) {
+          return { text: await listLanguages(meta) };
         }
 
-        // 3. 인자 있으면 설치
-        const result = await installLanguage(meta, args[0]);
-        return { text: result };
+        // 3. 첫 번째 토큰만 언어 코드로 사용 (예: "ko-KR extra" → "ko-KR")
+        const langCode = input.split(/\s+/)[0];
+        return { text: await installLanguage(meta, langCode) };
       } catch (err) {
         return {
           text: `❌ 오류가 발생했습니다: ${err instanceof Error ? err.message : String(err)}`,
