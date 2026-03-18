@@ -15,6 +15,8 @@ const GITHUB_RAW_BASE =
   "https://raw.githubusercontent.com/mapd3692/openclaw-i18n-plus/main";
 const LOCALE_META_URL = `${GITHUB_RAW_BASE}/locale-meta.json`;
 const CONTROL_UI_ASSETS = "/app/dist/control-ui/assets";
+// 상태 파일은 OpenClaw 업그레이드 시 교체되는 assets 디렉토리 외부에 보관
+const STATE_FILE = "/app/data/.i18n-plus-state.json";
 
 // --- 타입 ---
 interface LocaleVersion {
@@ -201,6 +203,105 @@ function findMainBundle(): string | null {
   }
 }
 
+// --- 상태 파일 타입 ---
+interface PluginState {
+  installedLocales: Record<
+    string,
+    {
+      patchedAt: string;       // ISO 타임스탬프
+      openClawVersion: string; // 패치 당시 OpenClaw 버전
+    }
+  >;
+}
+
+// --- 상태 읽기 ---
+function readState(): PluginState {
+  try {
+    if (existsSync(STATE_FILE)) {
+      return JSON.parse(readFileSync(STATE_FILE, "utf-8")) as PluginState;
+    }
+  } catch {
+    // 파일이 손상된 경우 초기화
+  }
+  return { installedLocales: {} };
+}
+
+// --- 상태 쓰기 ---
+function writeState(state: PluginState): void {
+  try {
+    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
+  } catch {
+    // assets 디렉토리가 없는 환경에서는 무시
+  }
+}
+
+// --- 자동 업데이트: 버전 변경 감지 시 설치된 언어팩 재패치 ---
+async function autoUpdate(): Promise<void> {
+  const state = readState();
+  const installedCodes = Object.keys(state.installedLocales);
+
+  if (installedCodes.length === 0) return;
+
+  const currentVersion = getOpenClawVersion();
+  if (currentVersion === "unknown") return;
+
+  // 버전이 변경된 locale만 필터링
+  const outdated = installedCodes.filter(
+    (code) => state.installedLocales[code].openClawVersion !== currentVersion
+  );
+
+  if (outdated.length === 0) return;
+
+  console.log(
+    `[i18n-plus] OpenClaw ${currentVersion} 감지 — ` +
+      `${outdated.join(", ")} 언어팩 자동 업데이트 중...`
+  );
+
+  try {
+    const meta = await fetchLocaleMeta();
+
+    for (const code of outdated) {
+      const entry = meta.locales[code];
+      if (!entry) continue;
+
+      const best = selectBestVersion(entry.versions, currentVersion);
+      if (!best) continue;
+
+      const { versionInfo } = best;
+      const chunkUrl = `${GITHUB_RAW_BASE}/${versionInfo.file}`;
+
+      try {
+        const chunkContent = await httpsGet(chunkUrl);
+        const chunkFileName = `${code}-community.js`;
+        const chunkDest = `${CONTROL_UI_ASSETS}/${chunkFileName}`;
+
+        if (!existsSync(CONTROL_UI_ASSETS)) continue;
+
+        writeFileSync(chunkDest, chunkContent, "utf-8");
+
+        const indexJs = findMainBundle();
+        if (indexJs && !isAlreadyPatched(indexJs, code)) {
+          patchMainBundle(indexJs, code, versionInfo.exportName, chunkFileName);
+        }
+
+        // 상태 업데이트
+        state.installedLocales[code] = {
+          patchedAt: new Date().toISOString(),
+          openClawVersion: currentVersion,
+        };
+
+        console.log(`[i18n-plus] ${entry.name} 자동 업데이트 완료.`);
+      } catch {
+        console.warn(`[i18n-plus] ${entry.name} 자동 업데이트 실패 — 수동으로 /lang ${code} 를 실행해주세요.`);
+      }
+    }
+
+    writeState(state);
+  } catch {
+    // 네트워크 오류 등 — 자동 업데이트 실패해도 플러그인 로드는 계속
+  }
+}
+
 // --- /lang (인자 없음): 사용 가능한 언어 목록 출력 ---
 async function listLanguages(meta: LocaleMeta): Promise<string> {
   const officialList = meta.officialLocales.join(", ");
@@ -316,7 +417,15 @@ async function installLanguage(
   // 패치 실행
   patchMainBundle(indexJs, code, versionInfo.exportName, chunkFileName);
 
-  // 8. 결과 메시지
+  // 8. 상태 저장 (자동 업데이트를 위해 설치 버전 기록)
+  const state = readState();
+  state.installedLocales[code] = {
+    patchedAt: new Date().toISOString(),
+    openClawVersion: currentVersion,
+  };
+  writeState(state);
+
+  // 9. 결과 메시지
   if (exact) {
     return [
       `✅ ${entry.name}가 설치되었습니다. (openclaw ${version} 대응, 번역률 ${versionInfo.coverage})`,
@@ -334,6 +443,12 @@ async function installLanguage(
 // --- 플러그인 엔트리포인트 ---
 export default {
   name: "i18n-plus",
+
+  // 플러그인 로드 시 자동 업데이트 체크
+  onLoad: () => {
+    // 백그라운드로 실행 — 실패해도 플러그인 로드를 막지 않음
+    autoUpdate().catch(() => {});
+  },
 
   commands: {
     lang: {
