@@ -470,18 +470,29 @@ async function installLanguage(
 // --- 플러그인 엔트리포인트 ---
 // OpenClaw 플러그인 API: register(api) 함수를 통해 명령어/서비스 등록
 export function register(api: {
-  registerCommand: (name: string, opts: { description: string; handler: (args: string[]) => Promise<void> | void }) => void;
-  registerService: (name: string, opts: { onStart: () => void }) => void;
+  registerCommand: (descriptor: {
+    name: string;
+    description: string;
+    handler: (args: string[]) => Promise<{ text: string }> | { text: string };
+  }) => void;
+  registerService: (descriptor: {
+    id: string;
+    start: () => void;
+    stop?: () => void;
+  }) => void;
 }): void {
   // 자동 업데이트 서비스 등록 — 플러그인 시작 시 백그라운드로 실행
-  api.registerService("auto-update", {
-    onStart: () => {
+  api.registerService({
+    id: "auto-update",
+    start: () => {
       autoUpdate().catch(() => {});
     },
+    stop: () => { /* 정리 불필요 */ },
   });
 
   // /lang 명령어 등록
-  api.registerCommand("lang", {
+  api.registerCommand({
+    name: "lang",
     description: "커뮤니티 언어팩 설치 및 관리",
     handler: async (args: string[]) => {
       try {
@@ -491,17 +502,16 @@ export function register(api: {
         // 2. 인자 없으면 목록 출력
         if (!args || args.length === 0 || args[0] === "") {
           const list = await listLanguages(meta);
-          console.log(list);
-          return;
+          return { text: list };
         }
 
         // 3. 인자 있으면 설치
         const result = await installLanguage(meta, args[0]);
-        console.log(result);
+        return { text: result };
       } catch (err) {
-        console.error(
-          `❌ 오류가 발생했습니다: ${err instanceof Error ? err.message : String(err)}`
-        );
+        return {
+          text: `❌ 오류가 발생했습니다: ${err instanceof Error ? err.message : String(err)}`,
+        };
       }
     },
   });
