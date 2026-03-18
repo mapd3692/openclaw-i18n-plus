@@ -95,6 +95,10 @@ function extractNestedKeys(objStr: string, prefix: string, keys: string[]): void
       }
       const nestedObj = objStr.slice(start, i - 1);
       extractNestedKeys(nestedObj, fullKey, keys);
+      // 중첩 객체 범위를 건너뛰도록 lastIndex 업데이트
+      // 이렇게 하지 않으면 외부 regex가 같은 위치에서 재개해
+      // 내부 키를 부모 레벨에서 다시 매칭하는 이중 카운팅 버그 발생
+      keyValueRegex.lastIndex = i;
     } else {
       // 리프 키
       keys.push(fullKey);
