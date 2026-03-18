@@ -238,7 +238,7 @@ function writeState(state: PluginState): void {
   try {
     writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
   } catch {
-    // assets 디렉토리가 없는 환경에서는 무시
+    // /app/data 디렉토리가 없는 환경(테스트 등)에서는 무시
   }
 }
 
