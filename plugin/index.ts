@@ -172,22 +172,29 @@ function isAlreadyPatched(indexJsPath: string, localeCode: string): boolean {
 }
 
 // --- 메인 번들 패치: locale 매핑 테이블에 엔트리 삽입 ---
+// 반환값: true = 패치 성공, false = 앵커 미발견(패치 실패)
 function patchMainBundle(
   indexJsPath: string,
   localeCode: string,
   exportName: string,
   chunkFileName: string
-): void {
+): boolean {
   const content = readFileSync(indexJsPath, "utf-8");
 
   // "zh-CN" 앵커를 기준으로 삽입
   const anchor = `"zh-CN":`;
+  if (!content.includes(anchor)) {
+    // 앵커가 없으면 번들 형식이 변경된 것 — 패치하지 않고 실패 반환
+    return false;
+  }
+
   const newEntry =
     `"${localeCode}":{exportName:\`${exportName}\`,` +
     `loader:()=>E(()=>import(\`./${chunkFileName}\`),[],import.meta.url)},`;
 
   const patched = content.replace(anchor, newEntry + anchor);
   writeFileSync(indexJsPath, patched, "utf-8");
+  return true;
 }
 
 // --- 메인 번들 파일 탐색 ---
@@ -281,7 +288,11 @@ async function autoUpdate(): Promise<void> {
 
         const indexJs = findMainBundle();
         if (indexJs && !isAlreadyPatched(indexJs, code)) {
-          patchMainBundle(indexJs, code, versionInfo.exportName, chunkFileName);
+          const ok = patchMainBundle(indexJs, code, versionInfo.exportName, chunkFileName);
+          if (!ok) {
+            console.warn(`[i18n-plus] ${entry.name} 패치 앵커 미발견 — 번들 형식 변경 가능성 있음.`);
+            continue;
+          }
         }
 
         // 상태 업데이트
@@ -401,7 +412,16 @@ async function installLanguage(
 
   // 중복 설치 방지
   if (isAlreadyPatched(indexJs, code)) {
-    // chunk 파일은 이미 업데이트했으므로 패치는 생략
+    // 번들은 이미 패치돼 있지만 상태 파일이 없을 수 있음
+    // (경로 마이그레이션 후 / 수동 삭제 등) — 여기서도 상태를 저장해
+    // 다음 OpenClaw 업그레이드 때 autoUpdate()가 건너뛰지 않도록 보장
+    const state = readState();
+    state.installedLocales[code] = {
+      patchedAt: new Date().toISOString(),
+      openClawVersion: currentVersion,
+    };
+    writeState(state);
+
     return exact
       ? [
           `✅ ${entry.name}가 업데이트되었습니다. (openclaw ${version} 대응, 번역률 ${versionInfo.coverage})`,
@@ -415,7 +435,14 @@ async function installLanguage(
   }
 
   // 패치 실행
-  patchMainBundle(indexJs, code, versionInfo.exportName, chunkFileName);
+  const patchOk = patchMainBundle(indexJs, code, versionInfo.exportName, chunkFileName);
+  if (!patchOk) {
+    return [
+      `❌ 메인 번들 패치 실패: "zh-CN" 앵커를 찾을 수 없습니다.`,
+      `   OpenClaw 버전 업데이트로 번들 형식이 변경되었을 수 있습니다.`,
+      `   https://github.com/mapd3692/openclaw-i18n-plus/issues 에 신고해주세요.`,
+    ].join("\n");
+  }
 
   // 8. 상태 저장 (자동 업데이트를 위해 설치 버전 기록)
   const state = readState();
