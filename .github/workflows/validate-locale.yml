@@ -111,14 +111,12 @@ jobs:
                 errors.push(filePath + ': export 이름 \"' + expectedExport + '\"을(를) 찾을 수 없습니다.');
               }
 
-              // 기본적인 JS 문법 체크 (괄호 매칭)
-              let braceCount = 0;
-              for (const ch of content) {
-                if (ch === '{') braceCount++;
-                else if (ch === '}') braceCount--;
-              }
-              if (braceCount !== 0) {
-                errors.push(filePath + ': 중괄호가 매칭되지 않습니다 (차이: ' + braceCount + ')');
+              // JS 문법 검증 — 단순 괄호 카운팅 대신 실제 파싱을 수행하여
+              // 누락된 콤마 등 구조적 오류도 감지합니다.
+              try {
+                new Function(content);
+              } catch (syntaxErr) {
+                errors.push(filePath + ': JS 문법 오류 — ' + syntaxErr.message);
               }
             }
           }

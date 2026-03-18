@@ -287,7 +287,11 @@ async function autoUpdate(): Promise<void> {
         writeFileSync(chunkDest, chunkContent, "utf-8");
 
         const indexJs = findMainBundle();
-        if (indexJs && !isAlreadyPatched(indexJs, code)) {
+        if (!indexJs) {
+          console.warn(`[i18n-plus] ${entry.name} 메인 번들을 찾을 수 없어 자동 업데이트를 건너뜁니다.`);
+          continue;
+        }
+        if (!isAlreadyPatched(indexJs, code)) {
           const ok = patchMainBundle(indexJs, code, versionInfo.exportName, chunkFileName);
           if (!ok) {
             console.warn(`[i18n-plus] ${entry.name} 패치 앵커 미발견 — 번들 형식 변경 가능성 있음.`);
@@ -295,7 +299,7 @@ async function autoUpdate(): Promise<void> {
           }
         }
 
-        // 상태 업데이트
+        // 번들 패치가 확인된 후에만 상태 업데이트
         state.installedLocales[code] = {
           patchedAt: new Date().toISOString(),
           openClawVersion: currentVersion,
@@ -529,3 +533,6 @@ export function register(api: {
     },
   });
 }
+
+// OpenClaw 로더는 default export를 통해 플러그인을 인식합니다.
+export default register;
