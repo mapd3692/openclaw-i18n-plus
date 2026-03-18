@@ -175,7 +175,10 @@ function main(): void {
       }
 
       const translatedKeys = extractKeysFromChunk(chunkPath);
-      const translatedCount = translatedKeys.length;
+      // 참조 키 집합과의 교집합만 카운트 — stale/extra 키가 coverage를 부풀리지 않도록
+      const referenceSet = new Set(referenceKeys);
+      const matchedCount = translatedKeys.filter((k) => referenceSet.has(k)).length;
+      const translatedCount = matchedCount;
       const coveragePercent =
         totalKeys > 0 ? Math.round((translatedCount / totalKeys) * 100) : 0;
 
