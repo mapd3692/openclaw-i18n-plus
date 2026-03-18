@@ -128,7 +128,7 @@ function getReferenceKeys(version: string, meta: LocaleMeta): string[] {
   console.error(
     `오류: scripts/en-keys/${version}.txt 파일이 없습니다.\n` +
     `  영어 원본 키 파일을 먼저 생성해야 번역률을 정확히 계산할 수 있습니다.\n` +
-    `  생성 방법: npx ts-node scripts/extract-keys.ts --version ${version}`
+    `  생성 방법: npx ts-node scripts/extract-keys.ts <chunk-file> --save ${version}`
   );
   process.exit(1);
 }
@@ -178,16 +178,15 @@ function main(): void {
       // 참조 키 집합과의 교집합만 카운트 — stale/extra 키가 coverage를 부풀리지 않도록
       const referenceSet = new Set(referenceKeys);
       const matchedCount = translatedKeys.filter((k) => referenceSet.has(k)).length;
-      const translatedCount = matchedCount;
       const coveragePercent =
-        totalKeys > 0 ? Math.round((translatedCount / totalKeys) * 100) : 0;
+        totalKeys > 0 ? Math.round((matchedCount / totalKeys) * 100) : 0;
 
       results.push({
         locale: localeCode,
         name: entry.name,
         version,
         totalKeys,
-        translatedKeys: translatedCount,
+        translatedKeys: matchedCount,
         coveragePercent,
       });
 
@@ -240,15 +239,15 @@ function main(): void {
     );
 
     // PR 코멘트용 마크다운 테이블
-    let markdown = "## 📊 번역률 계산 결과\\n\\n";
-    markdown += "| 언어 | 코드 | 버전 | 번역 키 | 전체 키 | 번역률 |\\n";
-    markdown += "|------|------|------|---------|---------|--------|\\n";
+    let markdown = "## 📊 번역률 계산 결과\n\n";
+    markdown += "| 언어 | 코드 | 버전 | 번역 키 | 전체 키 | 번역률 |\n";
+    markdown += "|------|------|------|---------|---------|--------|\n";
     for (const r of results) {
       const warning = r.coveragePercent < 80 ? " ⚠️" : "";
-      markdown += `| ${r.name} | ${r.locale} | ${r.version} | ${r.translatedKeys} | ${r.totalKeys} | ${r.coveragePercent}%${warning} |\\n`;
+      markdown += `| ${r.name} | ${r.locale} | ${r.version} | ${r.translatedKeys} | ${r.totalKeys} | ${r.coveragePercent}%${warning} |\n`;
     }
     if (hasWarning) {
-      markdown += "\\n> ⚠️ 번역률이 80% 미만인 언어가 있습니다.\\n";
+      markdown += "\n> ⚠️ 번역률이 80% 미만인 언어가 있습니다.\n";
     }
 
     fs.appendFileSync(
