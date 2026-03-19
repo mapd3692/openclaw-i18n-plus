@@ -111,10 +111,12 @@ jobs:
                 errors.push(filePath + ': export 이름 \"' + expectedExport + '\"을(를) 찾을 수 없습니다.');
               }
 
-              // JS 문법 검증 — 단순 괄호 카운팅 대신 실제 파싱을 수행하여
-              // 누락된 콤마 등 구조적 오류도 감지합니다.
+              // JS 문법 검증 — ESM export 구문을 제거한 후 파싱하여
+              // 누락된 콤마 등 구조적 오류를 감지합니다.
+              // (new Function()은 classic script만 지원하므로 export 구문이 있으면 실패)
               try {
-                new Function(content);
+                const scriptContent = content.replace(/export\s*\{[^}]*\}\s*;?\s*$/, '');
+                new Function(scriptContent);
               } catch (syntaxErr) {
                 errors.push(filePath + ': JS 문법 오류 — ' + syntaxErr.message);
               }

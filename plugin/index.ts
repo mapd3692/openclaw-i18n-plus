@@ -11,7 +11,10 @@ import { join } from "path";
 import https from "https";
 
 // --- 상수 ---
+// 로컬 개발/테스트 시 환경변수로 오버라이드 가능
+// 예: I18N_PLUS_BASE_URL=http://localhost:8080 openclaw plugins install -l ./plugin
 const GITHUB_RAW_BASE =
+  process.env.I18N_PLUS_BASE_URL ||
   "https://raw.githubusercontent.com/mapd3692/openclaw-i18n-plus/main";
 const LOCALE_META_URL = `${GITHUB_RAW_BASE}/locale-meta.json`;
 const CONTROL_UI_ASSETS = "/app/dist/control-ui/assets";
