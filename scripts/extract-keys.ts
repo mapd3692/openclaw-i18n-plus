@@ -162,6 +162,24 @@ function main(): void {
   // --save 모드
   const saveIndex = args.indexOf("--save");
   if (saveIndex !== -1 && args[saveIndex + 1]) {
+    // en-keys 베이스라인은 영어 원본 번들에서 추출해야 합니다.
+    // *-community.js 파일(커뮤니티 번역)을 사용하면 번역 누락 키가
+    // 베이스라인에서 빠져 coverage가 순환 참조로 부풀려집니다.
+    const baseName = path.basename(chunkFile);
+    const forceFlag = args.includes("--force");
+    if (baseName.includes("-community") && !forceFlag) {
+      console.error(
+        `\n❌ 커뮤니티 번역 파일(${baseName})은 en-keys 베이스라인으로 사용할 수 없습니다.`
+      );
+      console.error(
+        `   영어 원본 번들에서 추출한 키를 사용해주세요.`
+      );
+      console.error(
+        `   강제로 저장하려면 --force 플래그를 추가하세요.`
+      );
+      process.exit(1);
+    }
+
     const version = args[saveIndex + 1];
     const keysDir = path.join(__dirname, "en-keys");
 

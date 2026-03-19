@@ -7,8 +7,9 @@
 
 import { execSync } from "child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
 import https from "https";
+import http from "http";
 
 // --- 상수 ---
 // 로컬 개발/테스트 시 환경변수로 오버라이드 가능
@@ -17,9 +18,17 @@ const GITHUB_RAW_BASE =
   process.env.I18N_PLUS_BASE_URL ||
   "https://raw.githubusercontent.com/mapd3692/openclaw-i18n-plus/main";
 const LOCALE_META_URL = `${GITHUB_RAW_BASE}/locale-meta.json`;
-const CONTROL_UI_ASSETS = "/app/dist/control-ui/assets";
-// 상태 파일은 OpenClaw 업그레이드 시 교체되는 assets 디렉토리 외부에 보관
-const STATE_FILE = "/app/data/.i18n-plus-state.json";
+
+// Docker(/app/...) 및 네이티브 설치 모두 지원하기 위해 환경변수 또는 런타임
+// stateDir에서 경로를 유도합니다. 하드코딩 경로는 최종 폴백으로만 사용됩니다.
+const DEFAULT_CONTROL_UI_ASSETS = "/app/dist/control-ui/assets";
+const DEFAULT_STATE_FILE = "/app/data/.i18n-plus-state.json";
+
+// 런타임에서 주입되는 경로 — register() 호출 시 설정됨
+let resolvedControlUiAssets: string = process.env.OPENCLAW_CONTROL_UI_ASSETS || DEFAULT_CONTROL_UI_ASSETS;
+let resolvedStateFile: string = process.env.OPENCLAW_STATE_DIR
+  ? join(process.env.OPENCLAW_STATE_DIR, ".i18n-plus-state.json")
+  : DEFAULT_STATE_FILE;
 
 // --- 타입 ---
 interface LocaleVersion {
@@ -40,11 +49,14 @@ interface LocaleMeta {
   locales: Record<string, LocaleEntry>;
 }
 
-// --- 유틸리티: HTTPS GET ---
-function httpsGet(url: string): Promise<string> {
+// --- 유틸리티: HTTP(S) GET ---
+// http:// 와 https:// 모두 지원하여 로컬 개발 환경(I18N_PLUS_BASE_URL=http://localhost:8080)에서도 동작
+function httpGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const request = (targetUrl: string) => {
-      https
+      const parsedUrl = new URL(targetUrl);
+      const transport = parsedUrl.protocol === "http:" ? http : https;
+      transport
         .get(targetUrl, (res) => {
           // 리다이렉트 처리
           if (
@@ -73,7 +85,7 @@ function httpsGet(url: string): Promise<string> {
 
 // --- locale-meta.json 다운로드 ---
 async function fetchLocaleMeta(): Promise<LocaleMeta> {
-  const raw = await httpsGet(LOCALE_META_URL);
+  const raw = await httpGet(LOCALE_META_URL);
   return JSON.parse(raw) as LocaleMeta;
 }
 
@@ -204,7 +216,7 @@ function patchMainBundle(
 function findMainBundle(): string | null {
   try {
     const result = execSync(
-      `find ${CONTROL_UI_ASSETS} -name "index-*.js" -not -name "*.map" | head -1`,
+      `find ${resolvedControlUiAssets} -name "index-*.js" -not -name "*.map" | head -1`,
       { encoding: "utf-8" }
     ).trim();
     return result || null;
@@ -227,8 +239,8 @@ interface PluginState {
 // --- 상태 읽기 ---
 function readState(): PluginState {
   try {
-    if (existsSync(STATE_FILE)) {
-      return JSON.parse(readFileSync(STATE_FILE, "utf-8")) as PluginState;
+    if (existsSync(resolvedStateFile)) {
+      return JSON.parse(readFileSync(resolvedStateFile, "utf-8")) as PluginState;
     }
   } catch {
     // 파일이 손상된 경우 초기화
@@ -239,7 +251,7 @@ function readState(): PluginState {
 // --- 상태 쓰기 ---
 function writeState(state: PluginState): void {
   try {
-    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
+    writeFileSync(resolvedStateFile, JSON.stringify(state, null, 2), "utf-8");
   } catch {
     // /app/data 디렉토리가 없는 환경(테스트 등)에서는 무시
   }
@@ -281,11 +293,11 @@ async function autoUpdate(): Promise<void> {
       const chunkUrl = `${GITHUB_RAW_BASE}/${versionInfo.file}`;
 
       try {
-        const chunkContent = await httpsGet(chunkUrl);
+        const chunkContent = await httpGet(chunkUrl);
         const chunkFileName = `${code}-community.js`;
-        const chunkDest = `${CONTROL_UI_ASSETS}/${chunkFileName}`;
+        const chunkDest = `${resolvedControlUiAssets}/${chunkFileName}`;
 
-        if (!existsSync(CONTROL_UI_ASSETS)) continue;
+        if (!existsSync(resolvedControlUiAssets)) continue;
 
         writeFileSync(chunkDest, chunkContent, "utf-8");
 
@@ -393,17 +405,17 @@ async function installLanguage(
   const chunkUrl = `${GITHUB_RAW_BASE}/${versionInfo.file}`;
   let chunkContent: string;
   try {
-    chunkContent = await httpsGet(chunkUrl);
+    chunkContent = await httpGet(chunkUrl);
   } catch (err) {
     return `❌ 언어팩 파일을 다운로드할 수 없습니다: ${chunkUrl}`;
   }
 
   // 6. assets 디렉토리에 저장
   const chunkFileName = `${code}-community.js`;
-  const chunkDest = join(CONTROL_UI_ASSETS, chunkFileName);
+  const chunkDest = join(resolvedControlUiAssets, chunkFileName);
 
-  if (!existsSync(CONTROL_UI_ASSETS)) {
-    return `❌ Control UI assets 디렉토리를 찾을 수 없습니다: ${CONTROL_UI_ASSETS}`;
+  if (!existsSync(resolvedControlUiAssets)) {
+    return `❌ Control UI assets 디렉토리를 찾을 수 없습니다: ${resolvedControlUiAssets}`;
   }
 
   writeFileSync(chunkDest, chunkContent, "utf-8");
@@ -502,7 +514,18 @@ export function register(api: {
   // 자동 업데이트 서비스 등록 — 플러그인 시작 시 백그라운드로 실행
   api.registerService({
     id: "auto-update",
-    start: (_ctx) => {
+    start: (ctx) => {
+      // 런타임에서 제공하는 stateDir로 경로를 유도 (Docker 및 네이티브 설치 모두 지원)
+      if (ctx.stateDir) {
+        resolvedStateFile = join(ctx.stateDir, ".i18n-plus-state.json");
+        // Control UI assets 경로를 stateDir 기준으로 유추:
+        // 일반적으로 stateDir은 <installRoot>/data, assets는 <installRoot>/dist/control-ui/assets
+        const installRoot = dirname(ctx.stateDir);
+        const inferredAssets = join(installRoot, "dist", "control-ui", "assets");
+        if (existsSync(inferredAssets)) {
+          resolvedControlUiAssets = inferredAssets;
+        }
+      }
       autoUpdate().catch(() => {});
     },
     stop: (_ctx) => { /* 정리 불필요 */ },
