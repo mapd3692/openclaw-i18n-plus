@@ -87,6 +87,21 @@ jobs:
             }
           }
 
+          // alias가 다른 커뮤니티 locale 코드와 충돌하는지 검사
+          // resolveAlias()는 코드 정확 일치를 alias 탐색보다 먼저 수행하므로,
+          // locale B의 alias가 locale A의 코드와 같으면 그 alias는 도달 불가능합니다.
+          const communityCodeMap = {};
+          for (const code of Object.keys(meta.locales || {})) {
+            communityCodeMap[code.toLowerCase()] = code;
+          }
+          for (const { alias, locale } of allAliases) {
+            const lower = alias.toLowerCase();
+            if (communityCodeMap[lower] && communityCodeMap[lower] !== locale) {
+              const conflictCode = communityCodeMap[lower];
+              errors.push(locale + ': alias \"' + alias + '\"이(가) 다른 커뮤니티 locale 코드 \"' + conflictCode + '\"와 충돌합니다. resolveAlias()에서 코드 일치가 alias보다 우선하므로 이 alias는 도달 불가능합니다.');
+            }
+          }
+
           if (errors.length > 0) {
             console.error('❌ locale-meta.json 검증 실패:\\n');
             errors.forEach(e => console.error('  - ' + e));
@@ -122,10 +137,14 @@ jobs:
                 errors.push(filePath + ': export 구문이 없습니다.');
               }
 
-              // exportName 확인
+              // exportName 확인 — 파일 내 raw substring 탐색이 아닌 실제 export 구문 검사
+              // content.includes(expectedExport) 방식은 번역 값 안에 해당 문자열이 있으면
+              // 오탐이 발생하므로, export{...as <name>} 형태의 클로즈에서 as 뒤 식별자를 직접 검사합니다.
               const expectedExport = vInfo.exportName;
-              if (!content.includes(expectedExport)) {
-                errors.push(filePath + ': export 이름 \"' + expectedExport + '\"을(를) 찾을 수 없습니다.');
+              const escapedExport = expectedExport.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const exportClausePattern = new RegExp('export\\s*\\{[^}]*\\bas\\s+' + escapedExport + '\\b[^}]*\\}');
+              if (!exportClausePattern.test(content)) {
+                errors.push(filePath + ': export 구문에서 \"' + expectedExport + '\"이(가) 내보내지지 않습니다. export{...as ' + expectedExport + '} 형태로 명시해야 합니다.');
               }
 
               // JS 문법 검증 — ESM export 구문을 제거한 후 파싱하여
