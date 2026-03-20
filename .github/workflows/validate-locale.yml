@@ -70,6 +70,22 @@ jobs:
             seen[lower] = locale;
           }
 
+          // aliases가 officialLocales와 충돌하는지 검사
+          // 공식 locale 코드와 겹치는 alias가 있으면 런타임에서 해당 locale에
+          // 도달할 수 없으므로 (installLanguage()가 공식 locale을 먼저 확인) CI에서 차단
+          const officialSet = new Set((meta.officialLocales || []).map(l => l.toLowerCase()));
+          for (const { alias, locale } of allAliases) {
+            if (officialSet.has(alias.toLowerCase())) {
+              errors.push(locale + ': alias \"' + alias + '\"이(가) 공식 locale과 충돌합니다. 런타임에서 해당 커뮤니티 locale에 도달할 수 없습니다.');
+            }
+          }
+          // locale 코드 자체가 officialLocales와 충돌하는지도 검사
+          for (const code of Object.keys(meta.locales || {})) {
+            if (officialSet.has(code.toLowerCase())) {
+              errors.push(code + ': 커뮤니티 locale 코드가 공식 locale과 충돌합니다.');
+            }
+          }
+
           if (errors.length > 0) {
             console.error('❌ locale-meta.json 검증 실패:\\n');
             errors.forEach(e => console.error('  - ' + e));

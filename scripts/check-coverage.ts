@@ -85,12 +85,25 @@ function extractNestedKeys(objStr: string, prefix: string, keys: string[]): void
     // 값이 중첩 객체인 경우
     if (rawKey.endsWith("{")) {
       // 중괄호 매칭으로 중첩 객체 범위 찾기
+      // 문자열 리터럴(백틱/따옴표) 안의 중괄호는 무시합니다.
       let depth = 1;
       let i = match.index + rawKey.length;
       const start = i;
       while (i < objStr.length && depth > 0) {
-        if (objStr[i] === "{") depth++;
-        else if (objStr[i] === "}") depth--;
+        const ch = objStr[i];
+        // 백틱/따옴표 문자열 건너뛰기
+        if (ch === "`" || ch === '"' || ch === "'") {
+          const quote = ch;
+          i++;
+          while (i < objStr.length && objStr[i] !== quote) {
+            if (objStr[i] === "\\" && i + 1 < objStr.length) i++; // 이스케이프 처리
+            i++;
+          }
+          i++; // 닫는 따옴표
+          continue;
+        }
+        if (ch === "{") depth++;
+        else if (ch === "}") depth--;
         i++;
       }
       const nestedObj = objStr.slice(start, i - 1);
