@@ -189,8 +189,9 @@ function main(): void {
 
       const translatedKeys = extractKeysFromChunk(chunkPath);
       // 참조 키 집합과의 교집합만 카운트 — stale/extra 키가 coverage를 부풀리지 않도록
+      // 중복 키도 제거하여 coverage가 100%를 초과하지 않도록 보장
       const referenceSet = new Set(referenceKeys);
-      const matchedCount = translatedKeys.filter((k) => referenceSet.has(k)).length;
+      const matchedCount = new Set(translatedKeys.filter((k) => referenceSet.has(k))).size;
       const coveragePercent =
         totalKeys > 0 ? Math.round((matchedCount / totalKeys) * 100) : 0;
 

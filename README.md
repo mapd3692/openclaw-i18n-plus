@@ -40,7 +40,17 @@ cd openclaw-i18n-plus
 openclaw plugins install -l ./plugin
 ```
 
-### 2. 언어팩 설치 / Install a language pack
+### 2. Gateway 재시작 / Restart the Gateway
+
+플러그인 설치 후 **반드시 OpenClaw Gateway를 재시작**해야 `/lang` 명령어가 등록됩니다.
+
+After installing the plugin, **restart the OpenClaw Gateway** before using `/lang`.
+
+```bash
+openclaw gateway restart
+```
+
+### 3. 언어팩 설치 / Install a language pack
 
 ```
 /lang ko

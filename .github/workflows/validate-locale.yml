@@ -56,6 +56,7 @@ jobs:
               for (const [ver, vInfo] of Object.entries(entry.versions)) {
                 if (!vInfo.file) errors.push(code + '/' + ver + ': file 필드가 없습니다.');
                 if (!vInfo.exportName) errors.push(code + '/' + ver + ': exportName 필드가 없습니다.');
+                if (!vInfo.coverage) errors.push(code + '/' + ver + ': coverage 필드가 없습니다. /lang 명령어에서 번역률이 undefined로 표시됩니다.');
               }
             }
           }
