@@ -7,7 +7,7 @@
 
 import { execSync } from "child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
+import { join } from "path";
 import https from "https";
 import http from "http";
 
@@ -423,7 +423,11 @@ async function installLanguage(
   const chunkDest = join(resolvedControlUiAssets, chunkFileName);
 
   if (!existsSync(resolvedControlUiAssets)) {
-    return `❌ Control UI assets 디렉토리를 찾을 수 없습니다: ${resolvedControlUiAssets}`;
+    return [
+      `❌ Control UI assets 디렉토리를 찾을 수 없습니다: ${resolvedControlUiAssets}`,
+      `   네이티브 설치 환경에서는 환경변수를 설정해주세요:`,
+      `   OPENCLAW_CONTROL_UI_ASSETS=<OpenClaw Control UI assets 경로>`,
+    ].join("\n");
   }
 
   writeFileSync(chunkDest, chunkContent, "utf-8");
@@ -524,16 +528,13 @@ export function register(api: {
   api.registerService({
     id: "auto-update",
     start: (ctx) => {
-      // 런타임에서 제공하는 stateDir로 경로를 유도 (Docker 및 네이티브 설치 모두 지원)
+      // stateDir은 상태 파일 경로에만 사용합니다.
+      // stateDir의 부모 디렉토리(dirname)로 assets 경로를 추론하는 것은
+      // stateDir이 ~/.openclaw 같은 사용자 홈 디렉토리 하위인 경우
+      // dirname이 홈 디렉토리가 되어 잘못된 경로를 생성할 수 있으므로 금지합니다.
+      // Control UI assets 경로는 환경변수 OPENCLAW_CONTROL_UI_ASSETS로 오버라이드하세요.
       if (ctx.stateDir) {
         resolvedStateFile = join(ctx.stateDir, ".i18n-plus-state.json");
-        // Control UI assets 경로를 stateDir 기준으로 유추:
-        // 일반적으로 stateDir은 <installRoot>/data, assets는 <installRoot>/dist/control-ui/assets
-        const installRoot = dirname(ctx.stateDir);
-        const inferredAssets = join(installRoot, "dist", "control-ui", "assets");
-        if (existsSync(inferredAssets)) {
-          resolvedControlUiAssets = inferredAssets;
-        }
       }
       autoUpdate().catch(() => {});
     },

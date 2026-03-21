@@ -29,12 +29,6 @@ Community-driven language packs for OpenClaw, installable in a single command.
 ### 1. 플러그인 설치 (최초 1회) / Install the plugin (once)
 
 ```bash
-openclaw plugins install @openclaw-community/i18n-plus
-```
-
-소스에서 설치 / Install from source:
-
-```bash
 git clone https://github.com/mapd3692/openclaw-i18n-plus.git
 cd openclaw-i18n-plus
 openclaw plugins install -l ./plugin
