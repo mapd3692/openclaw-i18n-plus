@@ -181,9 +181,17 @@ function selectBestVersion(
 }
 
 // --- 메인 번들에 이미 패치되었는지 확인 ---
-function isAlreadyPatched(indexJsPath: string, localeCode: string): boolean {
+// expectedExportName을 전달하면 현재 번들에 패치된 exportName이 일치하는지도 검사합니다.
+// locale-meta.json이 같은 코드의 exportName을 변경한 경우(예: 번들 재생성 후),
+// 기존 패치가 이미 존재하더라도 재패치가 필요하므로 false를 반환합니다.
+function isAlreadyPatched(indexJsPath: string, localeCode: string, expectedExportName?: string): boolean {
   const content = readFileSync(indexJsPath, "utf-8");
-  return content.includes(`"${localeCode}":{exportName:`);
+  if (!content.includes(`"${localeCode}":{exportName:`)) return false;
+  // expectedExportName이 제공된 경우, 현재 번들의 exportName과 일치하는지 추가 검사
+  if (expectedExportName !== undefined) {
+    return content.includes(`"${localeCode}":{exportName:\`${expectedExportName}\``);
+  }
+  return true;
 }
 
 // --- 메인 번들 패치: locale 매핑 테이블에 엔트리 삽입 ---
@@ -306,7 +314,7 @@ async function autoUpdate(): Promise<void> {
           console.warn(`[i18n-plus] ${entry.name} 메인 번들을 찾을 수 없어 자동 업데이트를 건너뜁니다.`);
           continue;
         }
-        if (!isAlreadyPatched(indexJs, code)) {
+        if (!isAlreadyPatched(indexJs, code, versionInfo.exportName)) {
           const ok = patchMainBundle(indexJs, code, versionInfo.exportName, chunkFileName);
           if (!ok) {
             console.warn(`[i18n-plus] ${entry.name} 패치 앵커 미발견 — 번들 형식 변경 가능성 있음.`);
@@ -429,9 +437,10 @@ async function installLanguage(
     ].join("\n");
   }
 
-  // 중복 설치 방지
-  if (isAlreadyPatched(indexJs, code)) {
-    // 번들은 이미 패치돼 있지만 상태 파일이 없을 수 있음
+  // 중복 설치 방지 — exportName도 함께 검사하여 exportName이 변경된 경우 재패치
+  // (같은 locale 코드더라도 locale-meta.json에서 exportName이 변경되면 번들을 재패치해야 함)
+  if (isAlreadyPatched(indexJs, code, versionInfo.exportName)) {
+    // 번들은 이미 올바른 exportName으로 패치돼 있지만 상태 파일이 없을 수 있음
     // (경로 마이그레이션 후 / 수동 삭제 등) — 여기서도 상태를 저장해
     // 다음 OpenClaw 업그레이드 때 autoUpdate()가 건너뛰지 않도록 보장
     const state = readState();

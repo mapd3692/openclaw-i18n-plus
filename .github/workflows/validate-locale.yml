@@ -159,6 +159,38 @@ jobs:
             }
           }
 
+          // locale-meta.json에 등록되지 않은 orphan locale 파일 검사
+          // 플러그인은 locale-meta.json을 통해서만 파일을 탐색하므로,
+          // locales/ 디렉토리에 존재하지만 메타에 등록되지 않은 파일은 프로덕션에서
+          // 도달 불가능합니다. PR에서 미리 차단합니다.
+          const registeredFiles = new Set();
+          for (const [code2, entry2] of Object.entries(meta.locales)) {
+            for (const [ver2, vInfo2] of Object.entries(entry2.versions)) {
+              registeredFiles.add(path.resolve(vInfo2.file));
+            }
+          }
+
+          function walkDir(dir) {
+            if (!fs.existsSync(dir)) return [];
+            const results = [];
+            for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
+              const fullPath = path.join(dir, dirent.name);
+              if (dirent.isDirectory()) {
+                results.push(...walkDir(fullPath));
+              } else if (dirent.isFile() && dirent.name.endsWith('.js')) {
+                results.push(fullPath);
+              }
+            }
+            return results;
+          }
+
+          const allLocaleFiles = walkDir('locales');
+          for (const filePath of allLocaleFiles) {
+            if (!registeredFiles.has(path.resolve(filePath))) {
+              errors.push(filePath + ': locale-meta.json에 등록되지 않은 파일입니다. 플러그인이 이 파일을 로드할 수 없으므로 locale-meta.json에 등록하거나 파일을 제거하세요.');
+            }
+          }
+
           if (errors.length > 0) {
             console.error('❌ chunk 파일 검증 실패:\\n');
             errors.forEach(e => console.error('  - ' + e));
