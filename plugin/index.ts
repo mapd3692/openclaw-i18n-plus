@@ -224,7 +224,7 @@ function patchMainBundle(
 function findMainBundle(): string | null {
   try {
     const result = execSync(
-      `find ${resolvedControlUiAssets} -name "index-*.js" -not -name "*.map" | head -1`,
+      `find "${resolvedControlUiAssets}" -name "index-*.js" -not -name "*.map" | head -1`,
       { encoding: "utf-8" }
     ).trim();
     return result || null;
@@ -238,8 +238,9 @@ interface PluginState {
   installedLocales: Record<
     string,
     {
-      patchedAt: string;       // ISO 타임스탬프
-      openClawVersion: string; // 패치 당시 OpenClaw 버전
+      patchedAt: string;           // ISO 타임스탬프
+      openClawVersion: string;     // 패치 당시 OpenClaw 버전
+      localePackVersion?: string;  // 설치한 locale-meta.json 버전 키 (exact 여부 판단에 사용)
     }
   >;
 }
@@ -275,10 +276,32 @@ async function autoUpdate(): Promise<void> {
   const currentVersion = getOpenClawVersion();
   if (currentVersion === "unknown") return;
 
-  // 버전이 변경된 locale만 필터링
-  const outdated = installedCodes.filter(
-    (code) => state.installedLocales[code].openClawVersion !== currentVersion
-  );
+  // locale-meta.json을 먼저 가져온 뒤 업데이트 필요 여부를 판단합니다.
+  // openClawVersion 변경뿐 아니라, 동일 OpenClaw 버전에 더 나은 locale pack(exact 버전)이
+  // 새로 추가된 경우(localePackVersion 변경)도 재패치 대상으로 포함합니다.
+  let meta: LocaleMeta;
+  try {
+    meta = await fetchLocaleMeta();
+  } catch {
+    // 네트워크 오류 — 자동 업데이트 생략
+    return;
+  }
+
+  const outdated = installedCodes.filter((code) => {
+    const installed = state.installedLocales[code];
+    // OpenClaw 버전이 변경된 경우
+    if (installed.openClawVersion !== currentVersion) return true;
+    // localePackVersion이 기록되어 있고, 현재 사용 가능한 최선 버전이 다른 경우
+    // (예: 이전 설치 당시 exact 버전이 없어 fallback을 썼지만, 이후 exact 버전이 추가됨)
+    if (installed.localePackVersion !== undefined) {
+      const entry = meta.locales[code];
+      if (entry) {
+        const best = selectBestVersion(entry.versions, currentVersion);
+        if (best && best.version !== installed.localePackVersion) return true;
+      }
+    }
+    return false;
+  });
 
   if (outdated.length === 0) return;
 
@@ -288,7 +311,6 @@ async function autoUpdate(): Promise<void> {
   );
 
   try {
-    const meta = await fetchLocaleMeta();
 
     for (const code of outdated) {
       const entry = meta.locales[code];
@@ -326,6 +348,7 @@ async function autoUpdate(): Promise<void> {
         state.installedLocales[code] = {
           patchedAt: new Date().toISOString(),
           openClawVersion: currentVersion,
+          localePackVersion: best.version,
         };
 
         console.log(`[i18n-plus] ${entry.name} 자동 업데이트 완료.`);
@@ -451,6 +474,7 @@ async function installLanguage(
     state.installedLocales[code] = {
       patchedAt: new Date().toISOString(),
       openClawVersion: currentVersion,
+      localePackVersion: version,
     };
     writeState(state);
 
@@ -481,6 +505,7 @@ async function installLanguage(
   state.installedLocales[code] = {
     patchedAt: new Date().toISOString(),
     openClawVersion: currentVersion,
+    localePackVersion: version,
   };
   writeState(state);
 
