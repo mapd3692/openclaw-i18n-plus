@@ -1,0 +1,110 @@
+name: 번역률 계산
+
+on:
+  pull_request:
+    paths:
+      - "locales/**"
+      - "locale-meta.json"
+      - "scripts/check-coverage.ts"
+      - "scripts/en-keys/**"
+      - "package.json"
+      - "package-lock.json"
+  push:
+    branches:
+      - main
+    paths:
+      - "locales/**"
+      - "locale-meta.json"
+      - "scripts/check-coverage.ts"
+      - "scripts/en-keys/**"
+      - "package.json"
+      - "package-lock.json"
+
+permissions:
+  pull-requests: write  # fork PR에서 PR 코멘트 작성에 필요
+  issues: write         # issues.createComment / issues.updateComment 호출에 필요
+  contents: read
+
+jobs:
+  check-coverage:
+    name: 번역률 계산
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node.js 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 번역률 계산
+        id: coverage
+        run: npm run check-coverage
+
+      - name: PR 코멘트 작성
+        # fork PR / Dependabot PR은 read-only 토큰이므로 코멘트 작성 건너뜀
+        # 동일 레포 PR에서만 실행 (외부 기여자는 Actions 탭 로그로 결과 확인)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // 스크립트를 다시 실행하여 마크다운 결과 획득
+            const { execSync } = require('child_process');
+            let output;
+            try {
+              output = execSync('npm run check-coverage --silent', { encoding: 'utf-8' });
+            } catch (e) {
+              output = e.stdout || '번역률 계산 중 오류가 발생했습니다.';
+            }
+
+            // 번역률 테이블을 마크다운으로 변환
+            const lines = output.split('\n');
+            const tableLines = lines.filter(l => l.startsWith('|') || l.includes('==='));
+            let body = '## 📊 번역률 계산 결과\n\n';
+
+            if (tableLines.length > 0) {
+              body += tableLines.filter(l => l.startsWith('|')).join('\n') + '\n';
+            } else {
+              body += '번역 파일이 없습니다.\n';
+            }
+
+            // 80% 미만 경고
+            if (output.includes('⚠️')) {
+              body += '\n> ⚠️ **주의**: 번역률이 80% 미만인 언어가 있습니다.\n';
+            }
+
+            body += '\n---\n🤖 *자동 생성된 코멘트 — [check-coverage.yml](.github/workflows/check-coverage.yml)*';
+
+            // 기존 코멘트 찾아서 업데이트 또는 새로 생성
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.body.includes('📊 번역률 계산 결과') && c.user.type === 'Bot'
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

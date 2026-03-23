@@ -1,0 +1,13 @@
+{
+  "name": "openclaw-i18n-plus",
+  "private": true,
+  "scripts": {
+    "check-coverage": "ts-node scripts/check-coverage.ts",
+    "extract-keys": "ts-node scripts/extract-keys.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  }
+}

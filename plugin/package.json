@@ -1,0 +1,29 @@
+{
+  "name": "@openclaw-community/i18n-plus",
+  "version": "0.1.0",
+  "description": "OpenClaw 커뮤니티 언어팩 플러그인",
+  "main": "index.ts",
+  "openclaw": {
+    "extensions": [
+      "index.ts"
+    ]
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "i18n",
+    "localization",
+    "language-pack",
+    "korean"
+  ],
+  "author": "OpenClaw Community",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mapd3692/openclaw-i18n-plus.git"
+  },
+  "homepage": "https://github.com/mapd3692/openclaw-i18n-plus#readme",
+  "bugs": {
+    "url": "https://github.com/mapd3692/openclaw-i18n-plus/issues"
+  }
+}
