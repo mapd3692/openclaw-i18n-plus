@@ -432,40 +432,20 @@ async function installLanguage(
 
   const { version, versionInfo, exact } = best;
 
-  // 5. chunk 파일 다운로드
-  const chunkUrl = `${GITHUB_RAW_BASE}/${versionInfo.file}`;
-  let chunkContent: string;
-  try {
-    chunkContent = await httpGet(chunkUrl);
-  } catch (err) {
-    return `❌ 언어팩 파일을 다운로드할 수 없습니다: ${chunkUrl}`;
-  }
-
-  // 6. assets 디렉토리에 저장
-  const chunkFileName = `${code}-community.js`;
-  const chunkDest = join(resolvedControlUiAssets, chunkFileName);
-
-  if (!existsSync(resolvedControlUiAssets)) {
-    return [
-      `❌ Control UI assets 디렉토리를 찾을 수 없습니다: ${resolvedControlUiAssets}`,
-      `   네이티브 설치 환경에서는 환경변수를 설정해주세요:`,
-      `   OPENCLAW_CONTROL_UI_ASSETS=<OpenClaw Control UI assets 경로>`,
-    ].join("\n");
-  }
-
-  writeFileSync(chunkDest, chunkContent, "utf-8");
-
-  // 7. 메인 번들 패치
+  // 5. 메인 번들 위치 확인 (네트워크 호출 전에 먼저 수행)
+  // 이미 설치된 경우 네트워크 없이 상태만 복구할 수 있으므로 다운로드 전에 체크
   const indexJs = findMainBundle();
   if (!indexJs) {
     return [
       `❌ 메인 번들 파일(index-*.js)을 찾을 수 없습니다.`,
-      `   파일은 다운로드되었지만 자동 패치에 실패했습니다.`,
+      `   OpenClaw 설치 경로를 확인하거나 환경변수를 설정해주세요.`,
     ].join("\n");
   }
 
+  // 6. 이미 패치된 경우 — 네트워크 호출 없이 상태만 복구하고 반환
   // 중복 설치 방지 — exportName도 함께 검사하여 exportName이 변경된 경우 재패치
   // (같은 locale 코드더라도 locale-meta.json에서 exportName이 변경되면 번들을 재패치해야 함)
+  const chunkFileName = `${code}-community.js`;
   if (isAlreadyPatched(indexJs, code, versionInfo.exportName)) {
     // 번들은 이미 올바른 exportName으로 패치돼 있지만 상태 파일이 없을 수 있음
     // (경로 마이그레이션 후 / 수동 삭제 등) — 여기서도 상태를 저장해
@@ -489,6 +469,28 @@ async function installLanguage(
           `   브라우저를 새로고침한 뒤 설정에서 ${entry.name}를 선택하세요.`,
         ].join("\n");
   }
+
+  // 7. chunk 파일 다운로드 (이미 설치된 경우엔 건너뜀)
+  const chunkUrl = `${GITHUB_RAW_BASE}/${versionInfo.file}`;
+  let chunkContent: string;
+  try {
+    chunkContent = await httpGet(chunkUrl);
+  } catch (err) {
+    return `❌ 언어팩 파일을 다운로드할 수 없습니다: ${chunkUrl}`;
+  }
+
+  // 8. assets 디렉토리에 저장
+  const chunkDest = join(resolvedControlUiAssets, chunkFileName);
+
+  if (!existsSync(resolvedControlUiAssets)) {
+    return [
+      `❌ Control UI assets 디렉토리를 찾을 수 없습니다: ${resolvedControlUiAssets}`,
+      `   네이티브 설치 환경에서는 환경변수를 설정해주세요:`,
+      `   OPENCLAW_CONTROL_UI_ASSETS=<OpenClaw Control UI assets 경로>`,
+    ].join("\n");
+  }
+
+  writeFileSync(chunkDest, chunkContent, "utf-8");
 
   // 패치 실행
   const patchOk = patchMainBundle(indexJs, code, versionInfo.exportName, chunkFileName);

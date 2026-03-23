@@ -5,12 +5,16 @@ on:
     paths:
       - "locales/**"
       - "locale-meta.json"
+      - "scripts/check-coverage.ts"
+      - "scripts/en-keys/**"
   push:
     branches:
       - main
     paths:
       - "locales/**"
       - "locale-meta.json"
+      - "scripts/check-coverage.ts"
+      - "scripts/en-keys/**"
 
 permissions:
   pull-requests: write  # fork PR에서 PR 코멘트 작성에 필요
