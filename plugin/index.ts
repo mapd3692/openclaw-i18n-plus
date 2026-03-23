@@ -442,14 +442,28 @@ async function installLanguage(
     ].join("\n");
   }
 
-  // 6. 이미 패치된 경우 — 네트워크 호출 없이 상태만 복구하고 반환
+  // 6. 이미 패치된 경우 — chunk 파일만 갱신하고 상태를 복구한 뒤 반환
   // 중복 설치 방지 — exportName도 함께 검사하여 exportName이 변경된 경우 재패치
   // (같은 locale 코드더라도 locale-meta.json에서 exportName이 변경되면 번들을 재패치해야 함)
   const chunkFileName = `${code}-community.js`;
   if (isAlreadyPatched(indexJs, code, versionInfo.exportName)) {
-    // 번들은 이미 올바른 exportName으로 패치돼 있지만 상태 파일이 없을 수 있음
-    // (경로 마이그레이션 후 / 수동 삭제 등) — 여기서도 상태를 저장해
-    // 다음 OpenClaw 업그레이드 때 autoUpdate()가 건너뛰지 않도록 보장
+    // 번들은 이미 올바른 exportName으로 패치돼 있음.
+    // 단, 같은 버전·exportName을 유지하면서 chunk 파일만 인플레이스 수정(오타 수정 등)된
+    // 경우를 처리하기 위해 chunk는 항상 새로 다운로드합니다.
+    // patchMainBundle()은 중복 실행하지 않습니다.
+    const chunkUrl = `${GITHUB_RAW_BASE}/${versionInfo.file}`;
+    try {
+      const chunkContent = await httpGet(chunkUrl);
+      if (existsSync(resolvedControlUiAssets)) {
+        const chunkDest = join(resolvedControlUiAssets, chunkFileName);
+        writeFileSync(chunkDest, chunkContent, "utf-8");
+      }
+    } catch {
+      // 네트워크 오류 시 기존 chunk를 그대로 사용 — 상태만 복구
+    }
+
+    // 상태 파일이 없을 수 있음 (경로 마이그레이션 후 / 수동 삭제 등)
+    // — 여기서도 상태를 저장해 다음 OpenClaw 업그레이드 때 autoUpdate()가 건너뛰지 않도록 보장
     const state = readState();
     state.installedLocales[code] = {
       patchedAt: new Date().toISOString(),

@@ -5,6 +5,7 @@ on:
     paths:
       - "locales/**"
       - "locale-meta.json"
+      - ".github/workflows/validate-locale.yml"
 
 jobs:
   validate:
